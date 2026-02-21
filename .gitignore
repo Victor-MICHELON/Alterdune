@@ -1,0 +1,15 @@
+# --- Fichiers de compilation (Objets et Exécutables) ---
+*.o
+*.out
+bin/
+obj/
+
+# Le nom de l'exécutable final qu'on va créer
+alterdune
+
+# --- Configurations VS Code ---
+.vscode/
+
+# --- Fichiers temporaires ou de crash Linux ---
+*~
+core

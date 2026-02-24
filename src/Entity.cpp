@@ -18,7 +18,6 @@ void Entity::takeDamage(int damage) {
 void Entity::heal(int amount) {
     if (amount > 0 && isAlive()) {
         hpCurrent += amount;
-        // On ne peut pas dépasser les HP Max
         if (hpCurrent > hpMax) {
             hpCurrent = hpMax;
         }

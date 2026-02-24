@@ -31,7 +31,6 @@ void Player::displayInventory() const {
 }
 
 void Player::useItemFromInventory(int index) {
-    // L'index passé par l'utilisateur commence souvent à 1, donc on soustrait 1
     int realIndex = index - 1;
     
     if (realIndex >= 0 && realIndex < static_cast<int>(inventory.size())) {
@@ -52,7 +51,7 @@ void Player::useItemFromInventory(int index) {
 }
 
 void Player::addVictory(bool killedMonster) {
-    victories++; // La victoire augmente de 1 [cite: 112]
+    victories++;
     if (killedMonster) {
         monstersKilled++;
     } else {

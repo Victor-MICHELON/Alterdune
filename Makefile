@@ -15,8 +15,8 @@ EXEC = $(BIN_DIR)/alterdune
 all: directories $(EXEC)
 
 directories:
-	@mkdir -p $(OBJ_DIR) $(BIN_DIR)
-
+	if not exist $(OBJ_DIR) mkdir $(OBJ_DIR)
+	if not exist $(BIN_DIR) mkdir $(BIN_DIR)
 $(EXEC): $(OBJ)
 	$(CXX) $(OBJ) -o $@
 

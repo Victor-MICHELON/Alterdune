@@ -58,3 +58,7 @@ void Player::addVictory(bool killedMonster) {
         monstersSpared++;
     }
 }
+
+int Player::getVictories() const { return victories; }
+int Player::getMonstersKilled() const { return monstersKilled; }
+int Player::getMonstersSpared() const { return monstersSpared; }

@@ -26,6 +26,11 @@ public:
     void showItems();
     void startCombat();
     void runCombat(Monster* m);
+    void playerFight(Monster* m);
+    void playerAct(Monster* m);
+    void playerItem();
+    void playerMercy(Monster* m, bool& a, bool& b);
+    int rollDamage(int hpMax) const;
 };
 
 #endif

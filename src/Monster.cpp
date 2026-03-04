@@ -8,7 +8,8 @@ Monster::Monster(string name, int hp, int atk, int def, string category, int mer
 
 void Monster::displayStats() const {
     cout << "--- " << name << " (" << category << ") ---" << endl;
-    cout << "HP : " << hpCurrent << " / " << hpMax << endl;
+    cout << "HP max : " << hpMax << " | ATK : " << attack << " | DEF : " << defense << endl;
+    cout << "HP actuel : " << hpCurrent << " / " << hpMax << endl;
     cout << "Mercy : " << mercyCurrent << " / " << mercyGoal << endl;
 }
 

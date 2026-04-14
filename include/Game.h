@@ -15,13 +15,16 @@ private:
     std::vector<Monster*> monsterPool;
     std::vector<Monster*> bestiary;
     const std::map<std::string, ActAction>& actCatalog;
+    std::vector<std::string> combatLog;
+
+    void pushLog(const std::string& msg);
 
 public:
     Game(const std::string& name, std::vector<Item> items, std::vector<Monster*> monsters);
     ~Game();
 
     void run();
-    void showStats() const;
+    void showStats();
     void showBestiary() const;
     void showItems();
     void startCombat();
@@ -29,8 +32,8 @@ public:
     void playerFight(Monster* m);
     void playerAct(Monster* m);
     void playerItem();
-    void playerMercy(Monster* m, bool& a, bool& b);
-    int rollDamage(int hpMax) const;
+    void playerMercy(Monster* m, bool& combatOver, bool& monsterSpared);
+    int  rollDamage(int hpMax) const;
 };
 
 #endif

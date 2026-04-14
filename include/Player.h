@@ -20,6 +20,7 @@ public:
     void addItem(const Item& item);
     void displayInventory() const;
     void useItemFromInventory(int index);
+    
 
     void addVictory(bool killedMonster);
     
@@ -27,4 +28,5 @@ public:
     int getVictories() const;
     int getMonstersKilled() const;
     int getMonstersSpared() const;
+    const std::vector<Item>& getInventory() const { return inventory; }
 };

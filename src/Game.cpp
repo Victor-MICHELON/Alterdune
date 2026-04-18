@@ -1,5 +1,5 @@
 ﻿#include "Game.h"
-#include "DisplayManager.h" // Lien crucial
+#include "DisplayManager.h"
 #include <iostream>
 #include <random>
 #include <ctime>
@@ -51,14 +51,26 @@ void Game::showItems() {
     DisplayManager::renderItems(player);
     int choice;
     std::cin >> choice;
-    if (choice != 0) player.useItemFromInventory(choice);
+    if (choice != 0) {
+        player.useItemFromInventory(choice);
+        std::cout << "\nAppuyez sur Entree pour continuer..." << std::flush;
+        std::cin.ignore(1000, '\n');
+        std::cin.get();
+    }
+}
+
+int Game::rollDamage(int maxVal) const { 
+    if (maxVal <= 0) return 0;
+    static std::mt19937 rng(std::random_device{}());
+    std::uniform_int_distribution<int> dist(0, maxVal);
+    return dist(rng); 
 }
 
 void Game::startCombat() {
     if (monsterPool.empty()) { pushLog("Aucun monstre disponible."); return; }
-    static std::mt19937 rng(std::time(nullptr));
+    static std::mt19937 rng(std::random_device{}());
     std::uniform_int_distribution<int> dist(0, (int)monsterPool.size() - 1);
-    Monster* m = monsterPool[dist(rng)];
+    Monster* m = monsterPool[dist(rng)]->clone(); 
     runCombat(m);
 }
 
@@ -67,6 +79,8 @@ void Game::runCombat(Monster* monster) {
     pushLog("Combat engage contre " + monster->getName() + " !");
     bool combatOver = false;
     bool monsterSpared = false;
+
+    static std::mt19937 rng(std::random_device{}());
 
     while (monster->isAlive() && player.isAlive() && !combatOver) {
         DisplayManager::renderCombat(player, *monster, combatLog);
@@ -84,11 +98,16 @@ void Game::runCombat(Monster* monster) {
             default: pushLog("Choix invalide, tour perdu."); break;
         }
 
+        // Tour du Monstre
         if (monster->isAlive() && player.isAlive() && !combatOver) {
-            int roll = rand() % 100;
+            std::uniform_int_distribution<int> dist100(0, 99);
+            int roll = dist100(rng);
+            
             if (roll < 20 && !monster->getAvailableActs().empty()) {
                 const std::vector<std::string>& acts = monster->getAvailableActs();
-                const std::string& actId = acts[rand() % acts.size()];
+                std::uniform_int_distribution<int> actDist(0, (int)acts.size() - 1);
+                const std::string& actId = acts[actDist(rng)];
+                
                 if (actCatalog.count(actId)) {
                     const ActAction& action = actCatalog.at(actId);
                     pushLog(monster->getName() + " utilise " + actId + " !");
@@ -96,9 +115,11 @@ void Game::runCombat(Monster* monster) {
                     monster->receiveAct(action.mercyImpact);
                 }
             } else {
-                int dmg = monster->getAttack();
-                if (dmg == 0) pushLog(monster->getName() + " tente une attaque... et rate !");
-                else {
+                int dmg = rollDamage(monster->getAttack()); 
+                
+                if (dmg == 0) {
+                    pushLog(monster->getName() + " tente une attaque... et rate !");
+                } else {
                     pushLog(monster->getName() + " inflige " + std::to_string(dmg) + " degats !");
                     player.takeDamage(dmg);
                 }
@@ -129,9 +150,11 @@ void Game::runCombat(Monster* monster) {
         std::cin.get();
 
         bestiary.push_back(monster);
-        monsterPool.erase(std::remove(monsterPool.begin(), monsterPool.end(), monster), monsterPool.end());
+        
     }
 }
+
+
 
 void Game::playerFight(Monster* monster) {
     int dmg = rollDamage(monster->getHpMax());
@@ -184,5 +207,3 @@ void Game::playerMercy(Monster* monster, bool& combatOver, bool& monsterSpared) 
         pushLog(monster->getName() + " a ete epargne !");
     } else pushLog("Mercy insuffisant. Continuez les actions ACT !");
 }
-
-int Game::rollDamage(int hpMax) const { return rand() % (hpMax + 1); }

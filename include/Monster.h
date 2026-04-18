@@ -17,6 +17,8 @@ public:
     virtual ~Monster() = default;
 
     virtual int getActCapacity() const = 0; 
+    
+    virtual Monster* clone() const = 0;
 
     void displayStats() const override;
 

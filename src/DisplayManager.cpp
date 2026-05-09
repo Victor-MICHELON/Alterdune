@@ -3,242 +3,550 @@
 #include <iomanip>
 #include <sstream>
 #include <algorithm>
+#include <chrono>
+#include <thread>
+#include <cmath>
 
 #ifdef _WIN32
   #include <windows.h>
-  static bool ansiEnabled = false;
-  static void enableAnsiWindows() {
-      if (ansiEnabled) return;
-      HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-      DWORD dwMode = 0;
-      if (GetConsoleMode(hOut, &dwMode)) {
-          SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
-      }
-      ansiEnabled = true;
+  static bool _ansiOk = false;
+  static void _enableAnsi() {
+      if (_ansiOk) return;
+      HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+      DWORD m = 0; GetConsoleMode(h, &m);
+      SetConsoleMode(h, m | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+      _ansiOk = true;
   }
+#else
+  static void _enableAnsi() {}
 #endif
 
-namespace Ansi {
-    const std::string RESET   = "\033[0m";
-    const std::string BOLD    = "\033[1m";
-    const std::string DIM     = "\033[2m";
-    const std::string WHITE   = "\033[97m";
-    const std::string GRAY    = "\033[90m";
-    const std::string GREEN   = "\033[92m";
-    const std::string YELLOW  = "\033[93m";
-    const std::string RED     = "\033[91m";
-    const std::string CYAN    = "\033[96m";
-    const std::string MAGENTA = "\033[95m";
-    const std::string BLUE    = "\033[94m";
+
+namespace A {
+    const std::string R  = "\033[0m";
+    const std::string B  = "\033[1m";
+    const std::string D  = "\033[2m";
+    const std::string I  = "\033[3m";
+    const std::string BL = "\033[5m";
+    const std::string W  = "\033[97m";
+    const std::string GR = "\033[90m";
+    const std::string G  = "\033[92m";
+    const std::string Y  = "\033[93m";
+    const std::string RE = "\033[91m";
+    const std::string CY = "\033[96m";
+    const std::string MA = "\033[95m";
+    const std::string BU = "\033[94m";
+}
+
+
+int DisplayManager::visLen(const std::string& s) {
+    int n = 0; bool esc = false;
+    for (unsigned char c : s) {
+        if (c == '\033') { esc = true; continue; }
+        if (esc) { if (c == 'm') esc = false; continue; }
+        
+        if ((c & 0xC0) == 0x80) continue; 
+        
+        n++;
+    }
+    return n;
 }
 
 std::string DisplayManager::repeat(char c, int n) {
-    if (n <= 0) return "";
-    return std::string(n, c);
+    return n > 0 ? std::string(n, c) : "";
 }
 
-std::string DisplayManager::border(char left, char mid, char right) {
-    return std::string(1, left) + repeat(mid, W) + std::string(1, right) + "\n";
+std::string DisplayManager::border(char l, char m, char r, int w) {
+    return std::string(1,l) + repeat(m, w) + std::string(1,r) + "\n";
 }
 
-std::string DisplayManager::line(const std::string& content) {
-    std::string stripped;
-    bool inEsc = false;
-    for (char c : content) {
-        if (c == '\033') { inEsc = true; continue; }
-        if (inEsc) { if (c == 'm') inEsc = false; continue; }
-        stripped += c;
-    }
-    int visLen = static_cast<int>(stripped.size());
-    int padding = W - 2 - visLen;
-    if (padding < 0) padding = 0;
-    return "| " + content + repeat(' ', padding) + " |\n";
+std::string DisplayManager::line(const std::string& content, int w) {
+    int pad = w - 2 - visLen(content);
+    if (pad < 0) pad = 0;
+    return "| " + content + repeat(' ', pad) + " |\n";
+}
+
+std::string DisplayManager::centerText(const std::string& s, int w) {
+    int vl = visLen(s);
+    int total = w - 2;
+    int left  = (total - vl) / 2;
+    int right = total - vl - left;
+    if (left < 0) left = 0;
+    if (right < 0) right = 0;
+    return "| " + repeat(' ', left) + s + repeat(' ', right) + " |\n";
 }
 
 std::string DisplayManager::pad(const std::string& s, int width) {
-    int visLen = 0;
-    bool inEsc = false;
-    for (char c : s) {
-        if (c == '\033') { inEsc = true; continue; }
-        if (inEsc) { if (c == 'm') inEsc = false; continue; }
-        visLen++;
-    }
-    int padding = width - visLen;
-    if (padding <= 0) return s;
-    return s + std::string(padding, ' ');
+    int p = width - visLen(s);
+    return p > 0 ? s + std::string(p, ' ') : s;
 }
 
-std::string DisplayManager::bar(int current, int max, int width, char fill, char empty) {
-    if (max <= 0) return std::string(width + 2, empty);
-    int filled = std::max(0, std::min(current * width / max, width));
-    std::string out = "[";
-    out += repeat(fill, filled);
-    out += repeat(empty, width - filled);
-    out += "]";
-    return out;
+std::string DisplayManager::bar(int cur, int max, int width, char fill, char empty) {
+    if (max <= 0) return "[" + repeat(empty, width) + "]";
+    int f = std::max(0, std::min(cur * width / max, width));
+    return "[" + repeat(fill, f) + repeat(empty, width - f) + "]";
 }
 
 void DisplayManager::clearScreen() {
-#ifdef _WIN32
-    enableAnsiWindows();
-#endif
+    _enableAnsi();
     std::cout << "\033[2J\033[H" << std::flush;
 }
 
+void DisplayManager::waitEnter(const std::string& msg) {
+    std::string m = msg.empty() ? "  Appuyez sur [ENTREE] pour continuer..." : msg;
+    std::cout << A::GR << A::D << m << A::R << std::flush;
+    std::cin.ignore(1000, '\n');
+    std::cin.get();
+}
+
+
+void DisplayManager::renderTitleScreen() {
+    clearScreen();
+    std::ostringstream buf;
+
+    buf << A::CY << A::B;
+    buf << border('+', '=', '+');
+
+    // Logo ASCII simple et standard
+    const std::vector<std::string> logo = {
+        "    _   _  _____  ___  ___  ___  _   _  _   _  ___    ",
+        "   / \\ | ||_   _|| __|| _ \\|   \\| | | || \\ | || __|   ",
+        "  / ^ \\| |__| |  | _| |   /| |) | |_| ||  \\| || _|    ",
+        " /_/ \\_\\____|_|  |___||_|_\\|___/ \\___/ |_|\\__||___|   "
+    };
+
+    buf << A::R;
+    buf << line("");
+    
+    // Affichage du logo centré
+    for (auto& l : logo) {
+        buf << centerText(A::CY + A::B + l + A::R);
+    }
+    
+    buf << line("");
+    buf << A::Y << border('+', '-', '+') << A::R;
+    buf << line("");
+    buf << A::CY << border('+', '=', '+') << A::R;
+    buf << centerText(A::CY + A::B + "[ Appuyez sur ENTREE pour commencer ]" + A::R);
+
+    std::cout << buf.str() << std::flush;
+    std::cin.get(); 
+}
+//  MENU PRINCIPAL
+
 void DisplayManager::renderMainMenu(const Player& player) {
     std::ostringstream buf;
-    buf << Ansi::CYAN << Ansi::BOLD << border('+', '=', '+') << line(pad("  A L T E R D U N E", W - 2)) << border('+', '=', '+') << Ansi::RESET;
-    
-    std::ostringstream hpLine;
-    int hpPct = (player.getHpMax() > 0) ? player.getHpCurrent() * 100 / player.getHpMax() : 0;
-    std::string hpColor = (hpPct > 50) ? Ansi::GREEN : (hpPct > 20) ? Ansi::YELLOW : Ansi::RED;
-    hpLine << Ansi::BOLD << Ansi::WHITE << player.getName() << Ansi::RESET << "   HP: " << hpColor << Ansi::BOLD << std::setw(3) << player.getHpCurrent() << "/" << player.getHpMax() << Ansi::RESET << "  " << hpColor << bar(player.getHpCurrent(), player.getHpMax(), 18) << Ansi::RESET;
-    buf << line(hpLine.str());
-    
-    std::ostringstream vicLine;
-    vicLine << Ansi::CYAN << "Victoires : " << player.getVictories() << "/10" << Ansi::RESET << "   " << Ansi::GREEN << "Eparges: " << player.getMonstersSpared() << Ansi::RESET << "  " << Ansi::RED << "Tues: " << player.getMonstersKilled() << Ansi::RESET;
-    buf << line(vicLine.str());
-    
-    buf << border('+', '-', '+') << line(Ansi::YELLOW + Ansi::BOLD + "  MENU PRINCIPAL" + Ansi::RESET) << border('+', '-', '+');
-    buf << line(Ansi::WHITE + " [1] " + Ansi::RESET + "Combat") << line(Ansi::WHITE + " [2] " + Ansi::RESET + "Bestiaire") << line(Ansi::WHITE + " [3] " + Ansi::RESET + "Stats") << line(Ansi::WHITE + " [4] " + Ansi::RESET + "Items") << line(Ansi::WHITE + " [5] " + Ansi::RESET + "Quitter") << border('+', '=', '+') << "Choix : ";
-    std::cout << "\033[2J\033[H" << buf.str() << std::flush;
+    buf << "\033[2J\033[H";
+
+    // ── En-tête ──────────────────────────────────────────────────────────
+    buf << A::CY << A::B << border('+', '=', '+') << A::R;
+    buf << centerText(A::CY + A::B + "A L T E R D U N E" + A::R);
+    buf << A::CY << A::B << border('+', '=', '+') << A::R;
+
+    // ── Carte du joueur ───────────────────────────────────────────────────
+    int hpPct  = (player.getHpMax() > 0) ? player.getHpCurrent() * 100 / player.getHpMax() : 0;
+    std::string hpCol = hpPct > 50 ? A::G : hpPct > 20 ? A::Y : A::RE;
+
+    buf << line(A::B + A::W + " JOUEUR" + A::R + "  " + A::B + player.getName() + A::R);
+
+    std::ostringstream hpRow;
+    hpRow << " HP  " << hpCol << A::B
+          << std::setw(3) << player.getHpCurrent() << "/" << player.getHpMax() << A::R
+          << "  " << hpCol << bar(player.getHpCurrent(), player.getHpMax(), 22, '#', '.') << A::R;
+    buf << line(hpRow.str());
+
+    // Barre de progression victoires
+    std::ostringstream vicRow;
+    int v = player.getVictories();
+    vicRow << " PROGRESSION : ";
+    for (int i = 0; i < 10; ++i)
+        vicRow << (i < v ? A::CY + A::B + "#" + A::R : A::GR + "." + A::R);
+    vicRow << "  " << A::B << v << "/10" << A::R;
+    buf << line(vicRow.str());
+
+    // Stats rapides
+    std::ostringstream sRow;
+    sRow << " " << A::RE << "Tués: " << A::B << player.getMonstersKilled() << A::R
+         << "    " << A::G << "Épargnés: " << A::B << player.getMonstersSpared() << A::R;
+    buf << line(sRow.str());
+
+    buf << A::Y << border('+', '-', '+') << A::R;
+
+    // ── Menu ─────────────────────────────────────────────────────────────
+    buf << centerText(A::Y + A::B + "MENU PRINCIPAL" + A::R);
+    buf << A::Y << border('+', '-', '+') << A::R;
+
+    const std::vector<std::pair<std::string,std::string>> opts = {
+        {"1", "  Partir au combat"},
+        {"2", "  Bestiaire"},
+        {"3", "  Statistiques"},
+        {"4", "  Inventaire / Items"},
+        {"5", "  Quitter"},
+    };
+    for (auto& [k,v2] : opts) {
+        buf << line(A::W + " [" + k + "] " + A::R + v2);
+    }
+    buf << A::CY << border('+', '=', '+') << A::R;
+    buf << " Votre choix : ";
+
+    std::cout << buf.str() << std::flush;
 }
 
-void DisplayManager::renderCombat(const Player& player, const Monster& monster, const std::vector<std::string>& logs, const std::string& prompt) {
+//  VUE COMBAT
+void DisplayManager::renderCombat(const Player& player, const Monster& monster,
+                                   const std::vector<std::string>& logs,
+                                   const std::string& prompt) {
     std::ostringstream buf;
-    buf << Ansi::CYAN << Ansi::BOLD << border('+', '=', '+') << Ansi::RESET;
-    std::ostringstream h;
-    h << Ansi::CYAN << Ansi::BOLD << "  COMBAT vs " << Ansi::YELLOW << monster.getName() << Ansi::GRAY << "  [" << monster.getCategory() << "]" << Ansi::RESET;
-    buf << line(h.str()) << border('+', '-', '+');
+    buf << "\033[2J\033[H";
 
-    int hpPctP = (player.getHpMax() > 0) ? player.getHpCurrent() * 100 / player.getHpMax() : 0;
-    std::string pColor = (hpPctP > 50) ? Ansi::GREEN : (hpPctP > 20) ? Ansi::YELLOW : Ansi::RED;
-    std::ostringstream rowP;
-    rowP << Ansi::BOLD << Ansi::WHITE << pad(player.getName(), 14) << Ansi::RESET << " HP " << pColor << Ansi::BOLD << std::setw(3) << player.getHpCurrent() << "/" << std::setw(3) << player.getHpMax() << Ansi::RESET << " " << pColor << bar(player.getHpCurrent(), player.getHpMax(), 14) << Ansi::RESET;
-    buf << line(rowP.str());
+    buf << A::RE << A::B << border('+', '=', '+') << A::R;
+    {
+        std::string catTag;
+        if      (monster.getCategory() == "BOSS")     catTag = A::RE + A::B + "[ BOSS ]" + A::R;
+        else if (monster.getCategory() == "MINIBOSS") catTag = A::Y  + A::B + "[ MINI-BOSS ]" + A::R;
+        else                                           catTag = A::G  + A::D + "[ NORMAL ]" + A::R;
+        
+        buf << centerText(A::RE + A::B + "COMBAT vs " + A::R
+                          + A::Y + A::B + monster.getName() + A::R
+                          + "  " + catTag);
+    }
+    buf << A::RE << A::B << border('+', '=', '+') << A::R;
 
-    int hpPctM = (monster.getHpMax() > 0) ? monster.getHpCurrent() * 100 / monster.getHpMax() : 0;
-    std::string mColor = (hpPctM > 50) ? Ansi::GREEN : (hpPctM > 20) ? Ansi::YELLOW : Ansi::RED;
-    std::ostringstream rowM;
-    rowM << Ansi::BOLD << Ansi::MAGENTA << pad(monster.getName(), 14) << Ansi::RESET << " HP " << mColor << Ansi::BOLD << std::setw(3) << monster.getHpCurrent() << "/" << std::setw(3) << monster.getHpMax() << Ansi::RESET << " " << mColor << bar(monster.getHpCurrent(), monster.getHpMax(), 14) << Ansi::RESET;
-    buf << line(rowM.str());
+    // Barres HP / Mercy
+    auto renderBar = [&](const std::string& label, const std::string& nameStr,
+                         int cur, int maxv, bool isMercy) {
+        int pct = (maxv > 0) ? cur * 100 / maxv : 0;
+        std::string col = isMercy
+            ? (pct >= 100 ? A::G : pct >= 50 ? A::Y : A::GR)
+            : (pct > 50   ? A::G : pct > 20  ? A::Y : A::RE);
 
-    int mPct = (monster.getMercyGoal() > 0) ? monster.getMercyCurrent() * 100 / monster.getMercyGoal() : 0;
-    std::string merColor = (mPct >= 100) ? Ansi::GREEN : (mPct >= 50) ? Ansi::YELLOW : Ansi::GRAY;
-    std::ostringstream mRow;
-    mRow << Ansi::BOLD << "Mercy" << Ansi::RESET << "           " << merColor << Ansi::BOLD << std::setw(3) << monster.getMercyCurrent() << "/" << std::setw(3) << monster.getMercyGoal() << Ansi::RESET << " " << merColor << bar(monster.getMercyCurrent(), monster.getMercyGoal(), 14, '*', '.') << Ansi::RESET;
-    buf << line(mRow.str());
+        std::ostringstream row;
+        row << " " << A::B << pad(label, 8) << A::R
+            << pad(nameStr, 14)
+            << col << A::B << std::setw(3) << cur << "/" << std::setw(3) << maxv << A::R
+            << " " << col << bar(cur, maxv, 16, isMercy ? '*' : '#', '.') << A::R;
+        buf << line(row.str());
+    };
 
-    buf << border('+', '-', '+') << line(Ansi::BOLD + Ansi::GRAY + " Journal" + Ansi::RESET);
-    int logStart = std::max(0, (int)logs.size() - 4);
-    for (int i = logStart; i < (int)logs.size(); ++i) buf << line(" " + Ansi::DIM + logs[i] + Ansi::RESET);
-    for (int i = (int)logs.size() - logStart; i < 4; ++i) buf << line("");
+    renderBar("HP", player.getName(),   player.getHpCurrent(), player.getHpMax(), false);
+    renderBar("HP", monster.getName(),  monster.getHpCurrent(), monster.getHpMax(), false);
+    renderBar("MERCY", monster.getName(), monster.getMercyCurrent(), monster.getMercyGoal(), true);
 
-    buf << border('+', '-', '+');
-    std::ostringstream actions;
-    actions << Ansi::WHITE << "[1] FIGHT" << Ansi::RESET << "  " << Ansi::WHITE << "[2] ACT" << Ansi::RESET << "  " << Ansi::WHITE << "[3] ITEM" << Ansi::RESET << "  " << Ansi::WHITE << "[4] MERCY" << Ansi::RESET;
-    buf << line(actions.str()) << border('+', '=', '+');
-    
+    // Journal de combat
+    buf << A::Y << border('+', '-', '+') << A::R;
+    buf << line(A::GR + A::D + " ▼ JOURNAL DE COMBAT" + A::R);
+
+    int logStart = std::max(0, (int)logs.size() - 5);
+    for (int i = logStart; i < (int)logs.size(); ++i) {
+        buf << line(A::D + "  › " + A::R + logs[i]);
+    }
+  
+    for (int i = (int)(logs.size() - logStart); i < 5; ++i)
+        buf << line("");
+
+    // Actions
+    buf << A::Y << border('+', '-', '+') << A::R;
+    buf << line(A::W + A::B + " [1] FIGHT   " + A::R
+              + A::CY + A::B + "[2] ACT   " + A::R
+              + A::G  + A::B + "[3] ITEM   " + A::R
+              + A::Y  + A::B + "[4] MERCY" + A::R);
+    buf << A::CY << border('+', '=', '+') << A::R;
+
     if (!prompt.empty()) buf << prompt;
-    else buf << "Choix (1/2/3/4) : ";
-    std::cout << "\033[2J\033[H" << buf.str() << std::flush;
+    else buf << " Votre action (1/2/3/4) : ";
+
+    std::cout << buf.str() << std::flush;
 }
 
-void DisplayManager::renderActMenu(const Player& player, const Monster& monster, const std::vector<std::string>& logs, const std::vector<std::string>& acts, const std::map<std::string, ActAction>& catalog) {
+//  MENU ACT
+
+void DisplayManager::renderActMenu(const Player& player, const Monster& monster,
+                                    const std::vector<std::string>& logs,
+                                    const std::vector<std::string>& acts,
+                                    const std::map<std::string, ActAction>& catalog) {
     renderCombat(player, monster, logs, "");
     std::ostringstream buf;
-    buf << "\n" << Ansi::BOLD << Ansi::YELLOW << border('+', '-', '+') << Ansi::RESET;
-    buf << Ansi::BOLD << "| " << pad(" ACTIONS ACT", W - 2) << " |\n" << Ansi::RESET << Ansi::YELLOW << border('+', '-', '+') << Ansi::RESET;
+    buf << "\n";
+    buf << A::CY << A::B << border('+', '-', '+') << A::R;
+    buf << centerText(A::CY + A::B + "* ACTIONS ACT *" + A::R);
+    buf << A::CY << border('+', '-', '+') << A::R;
 
     for (size_t i = 0; i < acts.size(); ++i) {
-        const std::string& actId = acts[i];
+        const std::string& id = acts[i];
         std::ostringstream row;
-        row << Ansi::WHITE << "[" << i + 1 << "] " << Ansi::RESET << Ansi::BOLD << pad(actId, 14) << Ansi::RESET;
-        if (catalog.count(actId)) {
-            int impact = catalog.at(actId).mercyImpact;
-            std::string sign  = (impact >= 0) ? "+" : "";
-            std::string color = (impact >= 0) ? Ansi::GREEN : Ansi::RED;
-            row << color << "Mercy " << sign << impact << Ansi::RESET;
+        row << " " << A::W << A::B << "[" << i+1 << "] " << A::R
+            << A::CY << pad(id, 16) << A::R;
+        if (catalog.count(id)) {
+            int imp = catalog.at(id).mercyImpact;
+            std::string sign  = (imp >= 0) ? "+" : "";
+            std::string col   = (imp >= 0) ? A::G : A::RE;
+            
+            int absImp = std::abs(imp);
+            int dots   = std::min(absImp / 5, 8);
+            std::string impBar = col + "[" + std::string(dots, '|') + std::string(8-dots, ' ') + "] " + A::R;
+            row << impBar << col << "Mercy " << sign << imp << A::R;
         }
         buf << line(row.str());
     }
-    buf << Ansi::YELLOW << border('+', '-', '+') << Ansi::RESET << "Choix : ";
+    buf << A::CY << border('+', '-', '+') << A::R;
+    buf << " Votre choix : ";
     std::cout << buf.str() << std::flush;
 }
+
+//  FLASH VICTOIRE
+void DisplayManager::renderVictoryFlash(const Monster& monster, bool spared) {
+    std::ostringstream buf;
+    buf << "\033[2J\033[H";
+
+    if (spared) {
+        buf << A::G << A::B << border('+', '=', '+') << A::R;
+        buf << centerText(A::G + A::B + "MONSTRE EPARGNE" + A::R);
+        buf << A::G << border('+', '-', '+') << A::R;
+
+        buf << line("");
+        buf << centerText(A::GR + "+ Mercy accomplie +" + A::R);
+        buf << line("");
+    } else {
+        buf << A::RE << A::B << border('+', '=', '+') << A::R;
+        buf << centerText(A::RE + A::B + "MONSTRE VAINCU" + A::R);
+        buf << A::RE << border('+', '-', '+') << A::R;
+
+        buf << line("");
+        buf << centerText(A::RE + A::B + monster.getName() + A::R + A::RE + A::I + " est mort" + A::R);
+        buf << line("");
+    }
+    buf << A::Y << A::B << border('+', '=', '+') << A::R;
+
+    std::cout << buf.str();
+    waitEnter();
+}
+
+
+//  BESTIAIRE
 
 void DisplayManager::renderBestiary(const std::vector<Monster*>& bestiary) {
     std::ostringstream buf;
-    buf << "\033[2J\033[H" << Ansi::CYAN << Ansi::BOLD << border('+', '=', '+') << Ansi::RESET << line(Ansi::BOLD + "  BESTIAIRE" + Ansi::RESET) << border('+', '-', '+');
+    buf << "\033[2J\033[H";
+    buf << A::MA << A::B << border('+', '=', '+') << A::R;
+    buf << centerText(A::MA + A::B + "BESTIAIRE DES RENCONTRES" + A::R);
+    buf << A::MA << border('+', '-', '+') << A::R;
+
     if (bestiary.empty()) {
-        buf << line(Ansi::GRAY + "  Aucune rencontre enregistree." + Ansi::RESET);
+        buf << line("");
+        buf << centerText(A::GR + A::I + "Aucune rencontre enregistree." + A::R);
+        buf << line("");
     } else {
+        int idx = 1;
         for (const Monster* m : bestiary) {
-            std::ostringstream row;
-            std::string result = m->isSpared() ? Ansi::GREEN + "[Epargne]" + Ansi::RESET : Ansi::RED + "[Tue]" + Ansi::RESET;
-            row << Ansi::BOLD << Ansi::MAGENTA << pad(m->getName(), 16) << Ansi::RESET << Ansi::GRAY << "[" << m->getCategory() << "]" << Ansi::RESET << "  " << result;
-            buf << line(row.str());
-            std::ostringstream stats;
-            stats << Ansi::DIM << "  HP: " << m->getHpMax() << "  ATK: " << m->getAttack() << "  DEF: " << m->getDefense() << Ansi::RESET;
-            buf << line(stats.str()) << line(Ansi::GRAY + std::string(W - 4, '-') + Ansi::RESET);
+            bool sp = m->isSpared();
+            std::string resTag = sp ? A::G + A::B + " [EPARGNE] " + A::R
+                                    : A::RE + A::B + " [TUE    ] " + A::R;
+            std::string catCol = (m->getCategory()=="BOSS") ? A::RE :
+                                 (m->getCategory()=="MINIBOSS") ? A::Y : A::G;
+
+            buf << line(A::B + A::W + " #" + std::to_string(idx++) + " " + A::R
+                      + A::B + pad(m->getName(), 16) + A::R
+                      + catCol + A::D + "[" + m->getCategory() + "]" + A::R
+                      + resTag);
+
+            std::ostringstream st;
+            st << "     HP:" << A::CY << std::setw(4) << m->getHpMax() << A::R
+               << "  ATK:" << A::RE << std::setw(3) << m->getAttack() << A::R
+               << "  DEF:" << A::BU << std::setw(3) << m->getDefense() << A::R
+               << "  Mercy:" << A::Y << m->getMercyGoal() << A::R;
+            buf << line(st.str());
+            buf << line(A::GR + A::D + "  " + std::string(W - 6, '.') + A::R);
         }
     }
-    buf << Ansi::CYAN << border('+', '=', '+') << Ansi::RESET << "Appuyez sur Entree pour continuer...";
-    std::cout << buf.str() << std::flush;
-    std::cin.ignore(1000, '\n');
-    std::cin.get();
+    buf << A::MA << A::B << border('+', '=', '+') << A::R;
+    std::cout << buf.str();
+    waitEnter();
 }
+
+
+//  STATISTIQUES
 
 void DisplayManager::renderStats(const Player& player) {
     std::ostringstream buf;
-    buf << "\033[2J\033[H" << Ansi::CYAN << Ansi::BOLD << border('+', '=', '+') << Ansi::RESET << line(Ansi::BOLD + "  STATISTIQUES" + Ansi::RESET) << border('+', '-', '+');
+    buf << "\033[2J\033[H";
+
     int hpPct = (player.getHpMax() > 0) ? player.getHpCurrent() * 100 / player.getHpMax() : 0;
-    std::string hpColor = (hpPct > 50) ? Ansi::GREEN : (hpPct > 20) ? Ansi::YELLOW : Ansi::RED;
-    buf << line(Ansi::BOLD + Ansi::WHITE + "  Personnage : " + Ansi::RESET + player.getName());
+    std::string hpCol = hpPct > 50 ? A::G : hpPct > 20 ? A::Y : A::RE;
+
+    buf << A::BU << A::B << border('+', '=', '+') << A::R;
+    buf << centerText(A::BU + A::B + "FICHE DU JOUEUR" + A::R);
+    buf << A::BU << border('+', '-', '+') << A::R;
+    buf << line("");
+
+    buf << centerText(A::W + A::B + "<< " + player.getName() + " >>" + A::R);
+    buf << line("");
+    buf << A::BU << border('+', '-', '+') << A::R;
+
     std::ostringstream hp;
-    hp << "  HP      : " << hpColor << Ansi::BOLD << player.getHpCurrent() << "/" << player.getHpMax() << Ansi::RESET << "  " << hpColor << bar(player.getHpCurrent(), player.getHpMax(), 20) << Ansi::RESET;
+    hp << "  HP      " << hpCol << A::B << std::setw(3) << player.getHpCurrent()
+       << "/" << player.getHpMax() << A::R
+       << "   " << hpCol << bar(player.getHpCurrent(), player.getHpMax(), 24, '#', '.') << A::R;
     buf << line(hp.str());
-    buf << line("  ATK     : " + Ansi::YELLOW + Ansi::BOLD + std::to_string(player.getAttack()) + Ansi::RESET);
-    buf << line("  DEF     : " + Ansi::BLUE   + Ansi::BOLD + std::to_string(player.getDefense()) + Ansi::RESET);
-    buf << border('+', '-', '+');
-    buf << line("  Victoires  : " + Ansi::CYAN + std::to_string(player.getVictories()) + "/10" + Ansi::RESET);
-    buf << line("  Tues       : " + Ansi::RED   + std::to_string(player.getMonstersKilled())  + Ansi::RESET);
-    buf << line("  Eparges    : " + Ansi::GREEN  + std::to_string(player.getMonstersSpared()) + Ansi::RESET);
-    buf << Ansi::CYAN << border('+', '=', '+') << Ansi::RESET << "Appuyez sur Entree pour continuer...";
-    std::cout << buf.str() << std::flush;
-    std::cin.ignore(1000, '\n');
-    std::cin.get();
+
+    buf << line("");
+    buf << A::BU << border('+', '-', '+') << A::R;
+
+    std::ostringstream vRow;
+    vRow << "  Victoires    ";
+    int v = player.getVictories();
+    for (int i = 0; i < 10; ++i)
+        vRow << (i < v ? A::CY + A::B + "#" + A::R : A::GR + "." + A::R);
+    vRow << "  " << A::B << v << "/10" << A::R;
+    buf << line(vRow.str());
+
+    buf << line("  Monstres tues      " + A::RE  + A::B + std::to_string(player.getMonstersKilled())  + A::R);
+    buf << line("  Monstres epargnes  " + A::G   + A::B + std::to_string(player.getMonstersSpared()) + A::R);
+
+    int total = player.getMonstersKilled() + player.getMonstersSpared();
+    if (total > 0) {
+        buf << line("");
+        int pacifPct = player.getMonstersSpared() * 100 / total;
+        std::string karmaLabel = pacifPct >= 80 ? A::G + "PACIFISTE" + A::R :
+                                  pacifPct >= 40 ? A::Y + "NEUTRE"    + A::R :
+                                                   A::RE + "GENOCIDAIRE" + A::R;
+        buf << line("  Voie : " + karmaLabel);
+        std::ostringstream kBar;
+        kBar << "  " << A::RE + "[" + A::R;
+        int filled = pacifPct * 20 / 100;
+        for (int i = 0; i < 20; ++i) {
+            if (i < filled) kBar << A::G + "#" + A::R;
+            else             kBar << A::RE + "." + A::R;
+        }
+        kBar << A::RE + "]" + A::R;
+        buf << line(kBar.str());
+    }
+
+    buf << line("");
+    buf << A::BU << A::B << border('+', '=', '+') << A::R;
+    std::cout << buf.str();
+    waitEnter();
 }
+
+
+//  INVENTAIRE / ITEMS
 
 void DisplayManager::renderItems(const Player& player) {
     std::ostringstream buf;
-    buf << "\033[2J\033[H" << Ansi::CYAN << Ansi::BOLD << border('+', '=', '+') << Ansi::RESET << line(Ansi::BOLD + "  INVENTAIRE" + Ansi::RESET) << border('+', '-', '+');
-    const auto& inv = player.getInventory(); 
+    buf << "\033[2J\033[H";
+
+    buf << A::G << A::B << border('+', '=', '+') << A::R;
+    buf << centerText(A::G + A::B + "INVENTAIRE" + A::R);
+    buf << A::G << border('+', '-', '+') << A::R;
+
+    const auto& inv = player.getInventory();
     if (inv.empty()) {
-        buf << line(Ansi::GRAY + "  Votre inventaire est vide." + Ansi::RESET);
+        buf << line("");
+        buf << centerText(A::GR + A::I + "Votre inventaire est vide..." + A::R);
+        buf << line("");
     } else {
         for (size_t i = 0; i < inv.size(); ++i) {
+            const auto& it = inv[i];
             std::ostringstream row;
-            row << Ansi::WHITE << "  [" << i + 1 << "] " << Ansi::RESET << Ansi::BOLD << pad(inv[i].getName(), 16) << Ansi::RESET << Ansi::GREEN << "x" << inv[i].getQuantity() << Ansi::RESET << Ansi::GRAY  << "  " << inv[i].getType() << " +" << inv[i].getValue() << " HP" << Ansi::RESET;
+            row << " " << A::W << A::B << "[" << i+1 << "] " << A::R
+                << A::G << pad(it.getName(), 16) << A::R
+                << A::Y << "x" << it.getQuantity() << A::R
+                << A::GR << "  " << pad(it.getType(), 6) << A::R;
+            if (it.getType() == "HEAL") {
+                row << A::G << " +" << it.getValue() << " HP" << A::R;
+                int dots = std::min(it.getValue() / 3, 10);
+                row << "  " << A::G + A::D + "[" + std::string(dots, '+') + std::string(10-dots, ' ') + "]" + A::R;
+            }
             buf << line(row.str());
         }
     }
-    buf << Ansi::CYAN << border('+', '=', '+') << Ansi::RESET << "Utiliser un item ? (0 pour annuler) : ";
+    buf << A::G << A::B << border('+', '=', '+') << A::R;
+    buf << " Utiliser un item ? (0 pour annuler) : ";
     std::cout << buf.str() << std::flush;
 }
 
+
+//  ÉCRAN FIN – MORT DU JOUEUR 
+
+void DisplayManager::renderDeathScreen(const Player& player, const Monster& killer) {
+    std::ostringstream buf;
+    buf << "\033[2J\033[H";
+
+    buf << A::RE << A::B << border('+', '=', '+') << A::R;
+    buf << centerText(A::RE + A::B + A::BL + "VOUS ETES MORT" + A::R);
+    buf << A::RE << A::B << border('+', '=', '+') << A::R;
+    buf << line("");
+
+    buf << centerText(A::W + A::B + player.getName() + A::R
+                    + A::GR + " a ete vaincu par " + A::R
+                    + A::RE + A::B + killer.getName() + A::R);
+    buf << line("");
+    buf << line("");
+    buf << A::RE << border('+', '-', '+') << A::R;
+
+    buf << line("  Victoires atteintes  : " + A::CY + A::B + std::to_string(player.getVictories()) + "/10" + A::R);
+    buf << line("  Monstres tues        : " + A::RE + std::to_string(player.getMonstersKilled()) + A::R);
+    buf << line("  Monstres epargnes    : " + A::G  + std::to_string(player.getMonstersSpared()) + A::R);
+    buf << line("");
+    buf << A::RE << A::B << border('+', '=', '+') << A::R;
+
+    std::cout << buf.str() << std::flush;
+    waitEnter("  Appuyez sur [ENTREE] pour quitter...");
+}
+
+//  ÉCRAN FIN
+
 void DisplayManager::renderEndScreen(const Player& player) {
     std::ostringstream buf;
-    buf << "\033[2J\033[H" << Ansi::CYAN << Ansi::BOLD << border('+', '=', '+') << Ansi::RESET << line(Ansi::BOLD + Ansi::YELLOW + "    FIN DE PARTIE — 10 VICTOIRES" + Ansi::RESET) << border('+', '-', '+');
-    buf << line("  Monstres tues    : " + Ansi::RED   + std::to_string(player.getMonstersKilled())  + Ansi::RESET);
-    buf << line("  Monstres eparges : " + Ansi::GREEN + std::to_string(player.getMonstersSpared()) + Ansi::RESET) << border('+', '-', '+');
-    
-    if (player.getMonstersKilled() == 0) {
-        buf << line(Ansi::GREEN + Ansi::BOLD + "  *** FIN PACIFISTE ***" + Ansi::RESET) << line("  Tu as epargne chaque ame rencontree.") << line("  La paix regne sur Alterdune.");
-    } else if (player.getMonstersSpared() == 0) {
-        buf << line(Ansi::RED + Ansi::BOLD + "  *** FIN GENOCIDAIRE ***" + Ansi::RESET) << line("  Tu as annihile tout ce qui croisait ta route.") << line("  Le silence s'est installe sur Alterdune.");
-    } else {
-        buf << line(Ansi::YELLOW + Ansi::BOLD + "  *** FIN NEUTRE ***" + Ansi::RESET) << line("  Tu as tue et epargne. Un chemin ambigu.") << line("  Alterdune se souvient de tes choix.");
+    buf << "\033[2J\033[H";
+
+    int killed  = player.getMonstersKilled();
+    int spared  = player.getMonstersSpared();
+    bool isPaci = (killed == 0);
+    bool isGeno = (spared == 0);
+
+    std::string mainCol  = isPaci ? A::G : isGeno ? A::RE : A::Y;
+    std::string finTitle = isPaci ? "FIN PACIFISTE"
+                         : isGeno ? "FIN GENOCIDAIRE"
+                         :          "FIN NEUTRE";
+
+    buf << mainCol << A::B << border('+', '=', '+') << A::R;
+    buf << centerText(mainCol + A::B + finTitle + A::R);
+    buf << mainCol << A::B << border('+', '=', '+') << A::R;
+    buf << line("");
+
+    buf << centerText(A::W + A::B + "RESULTAT FINAL" + A::R);
+    buf << line("");
+    buf << line("  Victoires          " + A::CY + A::B + "10/10" + A::R + "  " + A::CY + "V" + A::R);
+
+    int total = killed + spared;
+    if (total > 0) {
+        std::ostringstream kRow;
+        kRow << "  Tues    " << A::RE << A::B << std::setw(3) << killed << A::R
+             << "  " << A::RE << bar(killed, total, 20, '#', '.') << A::R;
+        buf << line(kRow.str());
+
+        std::ostringstream sRow;
+        sRow << "  Epargnes " << A::G << A::B << std::setw(3) << spared << A::R
+             << "  " << A::G << bar(spared, total, 20, '#', '.') << A::R;
+        buf << line(sRow.str());
     }
-    buf << Ansi::CYAN << Ansi::BOLD << border('+', '=', '+') << Ansi::RESET;
+
+    buf << line("");
+    buf << mainCol << border('+', '-', '+') << A::R;
+
+    if (isPaci) {
+        buf << centerText(A::G + A::I + "\"L'integralite des monstres rencontres" + A::R);
+        buf << centerText(A::G + A::I + "a ete epargnee lors de cette session.\"" + A::R);
+    } else if (isGeno) {
+        buf << centerText(A::RE + A::I + "\"L'integralite des monstres rencontres" + A::R);
+        buf << centerText(A::RE + A::I + "a ete vaincue lors de cette session.\"" + A::R);
+    } else {
+        buf << centerText(A::Y + A::I + "\"Tu as tue et epargne. Un chemin" + A::R);
+        buf << centerText(A::Y + A::I + "ambigu. Alterdune se souvient.\"" + A::R);
+    }
+    buf << line("");
+    buf << mainCol << A::B << border('+', '=', '+') << A::R;
+
     std::cout << buf.str() << std::flush;
+    waitEnter("  Appuyez sur [ENTREE] pour quitter...");
 }

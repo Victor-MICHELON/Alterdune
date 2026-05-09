@@ -24,7 +24,7 @@ std::vector<Item> FileLoader::loadItems(const std::string& filename) {
     return items;
 }
 
-#include <algorithm> // Pour std::remove_if
+#include <algorithm>
 
 std::vector<Monster*> FileLoader::loadMonsters(const std::string& filename) {
     std::vector<Monster*> monsters;
@@ -33,11 +33,10 @@ std::vector<Monster*> FileLoader::loadMonsters(const std::string& filename) {
 
     std::string line;
 
-    // 1. ON SAUTE LA PREMIÈRE LIGNE (L'en-tête : categorie;nom;...)
+   
     std::getline(file, line);
 
     while (std::getline(file, line)) {
-        // Nettoyage des caractères de fin de ligne Windows (\r)
         line.erase(std::remove(line.begin(), line.end(), '\r'), line.end());
 
         if (line.empty()) continue;
@@ -51,13 +50,11 @@ std::vector<Monster*> FileLoader::loadMonsters(const std::string& filename) {
 
             try {
                 std::vector<std::string> acts;
-                // Lecture des actions restantes
                 std::string action;
                 while (std::getline(ss, action, ';')) {
                     if (action != "-" && !action.empty()) acts.push_back(action);
                 }
 
-                // Création selon la catégorie
                 if (cat == "NORMAL")
                     monsters.push_back(new NormalMonster(name, std::stoi(hp), std::stoi(atk), std::stoi(def), std::stoi(mGoal), acts));
                 else if (cat == "MINIBOSS")
@@ -66,7 +63,6 @@ std::vector<Monster*> FileLoader::loadMonsters(const std::string& filename) {
                     monsters.push_back(new BossMonster(name, std::stoi(hp), std::stoi(atk), std::stoi(def), std::stoi(mGoal), acts));
 
             } catch (const std::exception& e) {
-                // Si une ligne est mal formée, on l'affiche mais on ne bloque pas tout le jeu
                 std::cerr << "Ligne ignoree (erreur format) : " << line << " | Erreur : " << e.what() << std::endl;
             }
         }

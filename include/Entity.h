@@ -3,7 +3,7 @@
 #include <iostream>
 
 class Entity {
-protected: // Protected pour que les classes filles (Player, Monster) y aient accès
+protected:
     std::string name;
     int hpMax;
     int hpCurrent;
@@ -11,13 +11,12 @@ protected: // Protected pour que les classes filles (Player, Monster) y aient ac
     int defense;
 
 public:
-    // Constructeur
+   
     Entity(std::string name, int hpMax, int attack, int defense);
     
-    // Destructeur virtuel (très important en C++ avec l'héritage/polymorphisme)
     virtual ~Entity() = default;
 
-    //classe Abstraite
+
     virtual void displayStats() const = 0; 
 
     // Méthodes communes

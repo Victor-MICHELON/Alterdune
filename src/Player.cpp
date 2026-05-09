@@ -1,6 +1,5 @@
 #include "Player.h"
 
-// On initialise le joueur avec par exemple 50 HP, 10 Atk, 5 Def
 Player::Player(std::string name)
     : Entity(name, 50, 10, 5), victories(0), monstersKilled(0), monstersSpared(0) {}
 
@@ -23,7 +22,6 @@ void Player::displayInventory() const {
         return;
     }
     for (size_t i = 0; i < inventory.size(); ++i) {
-        // Affiche la liste des items et leurs quantités
         std::cout << i + 1 << ". " << inventory[i].getName() 
                   << " (x" << inventory[i].getQuantity() << ") - "
                   << inventory[i].getType() << " " << inventory[i].getValue() << " HP" << std::endl;

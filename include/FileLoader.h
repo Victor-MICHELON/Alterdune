@@ -8,7 +8,6 @@
 
 class FileLoader {
 public:
-    // Méthodes statiques pour être appelées sans instancier la classe [cite: 182]
     static std::vector<Item> loadItems(const std::string& filename);
     static std::vector<Monster*> loadMonsters(const std::string& filename);
 };
